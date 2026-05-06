@@ -70,6 +70,10 @@ let caissonNode = null;
 
 let caissonMode = 'soufflage'; // 'soufflage' ou 'aspiration'
 
+// Variables pour le calcul des débits
+let nodeFlows = {};
+let childrenMap = {};
+
 // === INITIALISATION === 
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -1531,6 +1535,7 @@ function calculateFlowRatesInverse() {
     });
     nodes.forEach(node => {
         if(node.type !== 'exit') node.flowRate = 0;
+        nodeFlows[node.id] = node.type === 'exit' ? (node.flowRate || 0) : 0;
     });
     
     // Calculer le débit total des bouches
@@ -1550,21 +1555,10 @@ function calculateFlowRatesInverse() {
     const caisson = nodes.find(n => n.type === 'entry');
     if(!caisson) return;
     
-    // NOUVELLE APPROCHE: Pour chaque bouche, ajouter son débit à tous les segments sur son chemin
+    // Pour chaque bouche, ajouter son débit à tous les segments sur son chemin vers le caisson
     exits.forEach(exit => {
         const exitFlow = exit.flowRate || 0;
         if(exitFlow === 0) return;
-        nodeFlows[exit.id] = exit.flowRate || 0;
-    });
-    
-    // Iteratively calculate node flows (bottom-up)
-    let changed = true;
-    let iterations = 0;
-    const maxIterations = 100;
-    
-    while(changed && iterations < maxIterations) {
-        changed = false;
-        iterations++;
         
         // Trouver le chemin depuis le caisson vers cette bouche
         const path = findPathFromCaisson(graph, exit.id);
@@ -1599,57 +1593,7 @@ function calculateFlowRatesInverse() {
     // Appeler mergeColinearSegments pour fusionner les sections continues
     mergeColinearSegments();
     mergeSimpleJunctions();
-        
-        // Calculate caisson flow
-        const caissonChildren = childrenMap[caisson.id] || [];
-        const caissonChildFlows = caissonChildren
-            .map(childId => nodeFlows[childId] || 0)
-            .filter(f => f > 0);
-        
-        if(caissonChildFlows.length > 0) {
-            const caissonFlow = caissonChildFlows.reduce((a, b) => a + b, 0);
-            if(nodeFlows[caisson.id] === undefined || nodeFlows[caisson.id] !== caissonFlow) {
-                nodeFlows[caisson.id] = caissonFlow;
-                changed = true;
-            }
-        }
-    }
     
-    // Assign flows to segments
-    // In a tree network, segment flow = minimum of the two node flows
-    // (the node closer to the caisson has accumulated flow, the farther node has the branch flow)
-    segments.forEach(seg => {
-        const node1Flow = nodeFlows[seg.node1.id] || 0;
-        const node2Flow = nodeFlows[seg.node2.id] || 0;
-        
-        const node1Distance = getDistanceFromCaisson(graph, caisson.id, seg.node1.id);
-        const node2Distance = getDistanceFromCaisson(graph, caisson.id, seg.node2.id);
-        
-        // Segment flow is the minimum of the two node flows
-        // This ensures that segments on the path to a single exit get that exit's flow
-        // and segments shared by multiple exits get the sum of all downstream exits
-        seg.flowRate = Math.min(node1Flow, node2Flow);
-        
-        // Direction: from caisson towards exits
-        if(node1Distance < node2Distance) {
-            seg.direction = 'node1->node2';
-        } else if(node2Distance < node1Distance) {
-            seg.direction = 'node2->node1';
-        } else {
-            // Same distance, use flow to determine direction
-            seg.direction = node1Flow >= node2Flow ? 'node1->node2' : 'node2->node1';
-        }
-        
-        const vm = parseFloat(document.getElementById('editorVitesseMax').value) || 4;
-        if(seg.flowRate > 0) {
-            seg.diameter = calculateOptimalDiameter(seg.flowRate, vm);
-        }
-    });
-    
-    // Merge colinear segments (segments connected by elbows should be treated as one section)
-    mergeColinearSegments();
-    
-    detectIntersections();
     displayFlowRatesOnDrawing();
 }
 
