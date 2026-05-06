@@ -1588,7 +1588,7 @@ function calculateFlowRatesInverse() {
         nodeFlows[exit.id] = exit.flowRate || 0;
     });
     
-    // Iteratively calculate node flows
+    // Iteratively calculate node flows (bottom-up)
     let changed = true;
     let iterations = 0;
     const maxIterations = 100;
@@ -1631,6 +1631,8 @@ function calculateFlowRatesInverse() {
     }
     
     // Assign flows to segments
+    // In a tree network, segment flow = minimum of the two node flows
+    // (the node closer to the caisson has accumulated flow, the farther node has the branch flow)
     segments.forEach(seg => {
         const node1Flow = nodeFlows[seg.node1.id] || 0;
         const node2Flow = nodeFlows[seg.node2.id] || 0;
@@ -1638,14 +1640,18 @@ function calculateFlowRatesInverse() {
         const node1Distance = getDistanceFromCaisson(graph, caisson.id, seg.node1.id);
         const node2Distance = getDistanceFromCaisson(graph, caisson.id, seg.node2.id);
         
-        if(node1Distance > node2Distance) {
-            seg.flowRate = node1Flow;
+        // Segment flow is the minimum of the two node flows
+        // This ensures that segments on the path to a single exit get that exit's flow
+        // and segments shared by multiple exits get the sum of all downstream exits
+        seg.flowRate = Math.min(node1Flow, node2Flow);
+        
+        // Direction: from caisson towards exits
+        if(node1Distance < node2Distance) {
             seg.direction = 'node1->node2';
-        } else if(node2Distance > node1Distance) {
-            seg.flowRate = node2Flow;
+        } else if(node2Distance < node1Distance) {
             seg.direction = 'node2->node1';
         } else {
-            seg.flowRate = Math.max(node1Flow, node2Flow);
+            // Same distance, use flow to determine direction
             seg.direction = node1Flow >= node2Flow ? 'node1->node2' : 'node2->node1';
         }
         
@@ -1655,9 +1661,14 @@ function calculateFlowRatesInverse() {
         }
     });
     
+    // Merge colinear segments (segments connected by elbows should be treated as one section)
+    mergeColinearSegments();
+    
     detectIntersections();
     displayFlowRatesOnDrawing();
 }
+
+
 
 function getDistanceFromCaisson(graph, caissonId, targetId) {
     if(caissonId === targetId) return 0;
@@ -1688,6 +1699,28 @@ function getDistanceFromCaisson(graph, caissonId, targetId) {
     return -1;
 }
 
+
+function mergeColinearSegments() {
+    // This function merges segments that form a continuous section (connected by elbows)
+    // For now, we ensure that connected segments on the same path have consistent flow rates
+    // which is already handled by calculateFlowRatesInverse using Math.min(node1Flow, node2Flow)
+    
+    // Future enhancement: actually merge segments that are colinear or connected by elbows
+    // For tree networks, segments on the same path from caisson to an exit should have the same flow
+    
+    // Ensure all segments on the same path have consistent diameters
+    // If two connected segments have the same flow, they should have the same diameter
+    segments.forEach(seg => {
+        if(seg.flowRate > 0) {
+            const vm = parseFloat(document.getElementById('editorVitesseMax').value) || 4;
+            const optimalDiameter = calculateOptimalDiameter(seg.flowRate, vm);
+            // Only update if significantly different
+            if(Math.abs(seg.diameter - optimalDiameter) > 10) {
+                seg.diameter = optimalDiameter;
+            }
+        }
+    });
+}
 
 function calculateDrawnNetwork() {
 
