@@ -1,477 +1,250 @@
 <!DOCTYPE html>
 
-
-
 <html lang="fr">
-
-
 
 <head>
 
-
-
     <meta charset="UTF-8">
-
-
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-
-
     <title>Calculateur & Éditeur Réseau Ventilation</title>
-
-
 
     <link rel="stylesheet" href="styles.css">
 
-
-
 </head>
-
-
 
 <body>
 
-
-
     <div class="container">
-
-
 
         <header>
 
-
-
             <h1>Calculateur & Éditeur de Réseau de Ventilation</h1>
-
-
 
             <p class="subtitle">Concevez et calculez votre réseau de ventilation avec calcul automatique des débits et pertes de charge</p>
 
-
-
             <div class="mode-selector">
-
-
 
                 <button class="mode-btn active" onclick="switchMode('calculateur')">Calculateur</button>
 
-
-
                 <button class="mode-btn" onclick="switchMode('editeur')">Éditeur Graphique</button>
-
-
 
             </div>
 
-
-
         </header>
-
-
-
 
         <div id="calculateurTab" class="tab-content active">
 
             <div class="card card-dark">
 
-
-
                 <h2 class="dark">Paramètres Globaux</h2>
-
-
 
                 <div class="grid">
 
-
-
                     <div class="form-group">
-
-
 
                         <label for="vitesseMax">Vitesse max (m/s)</label>
 
-
-
                         <input type="number" id="vitesseMax" value="4" min="1" max="20" step="0.1">
-
-
 
                         <p class="hint">Recommandé: 5-8 m/s (habitat)</p>
 
-
-
                     </div>
 
-
-
                     <div class="form-group">
-
-
 
                         <label for="coeffFrottement">Coeff. frottement</label>
 
-
-
                         <input type="number" id="coeffFrottement" value="0.02" min="0.01" max="0.1" step="0.001">
-
-
 
                         <p class="hint">Gaines galvanisées: 0.015-0.025</p>
 
-
-
                     </div>
 
-
-
                     <div class="form-group">
-
-
 
                         <label for="longueurGaine">Longueur (m)</label>
 
-
-
                         <input type="number" id="longueurGaine" value="10" min="1" max="1000">
 
-
-
                     </div>
-
-
 
                     <div class="form-group">
 
-
-
                         <label for="densiteAir">Densité air (kg/m³)</label>
-
-
 
                         <input type="number" id="densiteAir" value="1.225" min="0.5" max="2" step="0.001">
 
-
-
                     </div>
-
-
 
                 </div>
 
             </div>
-
-
 
             <div class="card">
 
-
-
                 <h2>Diamètres Commerciaux (mm)</h2>
-
-
 
                 <div id="diametresContainer" class="badges-container"></div>
 
-
-
                 <div class="input-row">
-
-
 
                     <input type="number" id="newDiametre" placeholder="Ajouter un diamètre (mm)" min="50" max="2000">
 
-
-
                     <button class="btn btn-secondary btn-sm" onclick="ajouterDiametre()">Ajouter</button>
 
-
-
                 </div>
-
-
 
             </div>
 
-
-
             <div class="card card-dark">
-
-
 
                 <h2 class="dark">Entrée des Débits</h2>
 
-
-
                 <div class="info-box">
-
-
 
                     <p><strong>Formules:</strong></p>
 
-
-
                     <div class="formula">
-
-
 
                         <strong>Circulaire:</strong> D = sqrt(4*Q/(pi*v))*1000<br>
 
-
-
                         <strong>Rectangulaire:</strong> Section = A*B, B = Section/A
-
-
 
                     </div>
 
-
-
                 </div>
-
-
 
                 <table id="debitsTable">
 
                     <thead><tr><th>#</th><th>Débit (m³/h)</th><th>Vit. max (m/s)</th><th>Long. (m)</th><th>Rect.</th><th>Côté A (mm)</th><th>Côté B (mm)</th><th>Actions</th></tr></thead>
 
-
-
                     <tbody id="debitsBody">
-
-
 
                         <tr>
 
-
-
                             <td>1</td>
-
-
 
                             <td><input type="number" class="debit-input" value="300" min="10" max="100000"></td>
 
-
-
                             <td><input type="number" class="vitesse-input" value="4" min="1" max="20" step="0.1"></td>
-
-
 
                             <td><input type="number" class="longueur-input" value="10" min="1" max="1000"></td>
 
-
-
                             <td class="checkbox-cell"><input type="checkbox" class="isRect-check" onchange="toggleRectFields(this);calculerTout()"></td>
-
-
 
                             <td><input type="number" class="coteA-input" value="500" min="10" max="5000" disabled oninput="calculerCoteBForRow(this.closest('tr'));calculerTout()"></td>
 
-
-
                             <td><input type="number" class="coteB-input" readonly></td>
-
-
 
                             <td><button class="btn btn-danger btn-sm" onclick="supprimerLigne(this)">X</button></td>
 
-
-
                         </tr>
-
-
 
                     </tbody>
 
                 </table>
 
-
-
                 <button class="btn btn-secondary" onclick="ajouterLigne()">Ajouter une ligne</button>
 
             </div>
 
-
-
             <div class="card">
-
-
 
                 <div class="actions">
 
-
-
                     <button class="btn btn-primary" onclick="calculerTout()">Calculer Tout</button>
-
-
 
                     <button class="btn btn-primary" onclick="calculerSelection()">Calculer Sélection</button>
 
-
-
                     <button class="btn btn-success" onclick="exporterCSV()">Exporter CSV</button>
-
-
 
                     <button class="btn btn-drawing" onclick="dessinerReseau()">Dessiner le réseau</button>
 
-
-
                     <button class="btn btn-secondary" onclick="reinitialiser()">Réinitialiser</button>
-
-
 
                 </div>
 
-
-
             </div>
-
-
 
             <div class="card">
 
-
-
                 <h2>Résultats</h2>
-
-
 
                 <div id="resultatsContainer">
 
-
-
                     <p class="center-text">Saisissez des débits et cliquez sur Calculer.</p>
-
-
 
                 </div>
 
             </div>
 
-
-
         </div>
-
-
-
 
         <div id="editeurTab" class="tab-content">
 
             <div class="editor-container">
 
-
-
                 <div class="editor-toolbar card">
 
                     <h3>Outils</h3>
-
-
 
                     <div class="tool-group">
 
                         <h4>Dessin</h4>
 
-
-
                         <button class="tool-btn active" onclick="setEditorTool('draw')" data-tool="draw">Dessiner (X/Y uniquement)</button>
-
-
 
                         <button class="tool-btn" onclick="setEditorTool('entry')" data-tool="entry">Entrée/Caisson</button>
 
-
-
                         <button class="tool-btn" onclick="setEditorTool('exit')" data-tool="exit">Sortie/Bouche</button>
-
-
 
                         <button class="tool-btn" onclick="setEditorTool('select')" data-tool="select">Sélectionner</button>
 
                     </div>
 
-
-
                     <div class="tool-group">
 
                         <h4>Actions</h4>
 
-
-
                         <button class="tool-btn" onclick="clearDrawing()">Effacer</button>
-
-
 
                         <button class="tool-btn" onclick="addStraightSegment()">Segment droit</button>
 
-
-
-
-
-
-
-
                         <button class="btn btn-primary" onclick="calculateDrawnNetwork()" style="margin-top:5px;width:100%">Calculer Réseau</button>
-
-
 
                         <button class="btn btn-success" onclick="exportToPDF()" style="margin-top:5px;width:100%">Exporter PDF</button>
 
                     </div>
 
-
-
                     <div class="tool-group">
 
                         <h4>Échelle</h4>
 
-
-
                         <div class="form-group">
-
-
 
                             <label>Échelle (px = m)</label>
 
-
-
                             <input type="number" id="scaleInput" value="20" min="5" max="100" step="1" onchange="updateScale()">
-
-
 
                         </div>
 
-
-
                     </div>
-
-
 
                     <div class="tool-group">
 
                         <h4>Paramètres</h4>
 
-
-
                         <div class="form-group">
-
-
 
                             <label>Débit total (m³/h)</label>
 
-
-
                             <input type="number" id="totalFlowRate" value="0" min="10" max="100000" readonly style="background:#f1f5f9;">
-
-
 
                         </div>
 
-
-
                         <div class="form-group">
-
-
 
                             <label>Mode Caisson</label>
 
@@ -481,181 +254,99 @@
                             </select>
                         </div>
 
-
-
                         <div class="form-group">
-
-
 
                             <label>Vitesse max (m/s)</label>
 
-
-
                             <input type="number" id="editorVitesseMax" value="4" min="1" max="20" step="0.1">
-
-
 
                         </div>
 
-
-
                         <div class="form-group">
-
-
 
                             <label>Densité (kg/m³)</label>
 
-
-
                             <input type="number" id="editorDensite" value="1.225" min="0.5" max="2" step="0.001">
 
-
-
                         </div>
-
-
 
                         <div class="form-group">
 
-
-
                             <label>Coeff. frottement</label>
-
-
 
                             <input type="number" id="editorCoeffFrottement" value="0.02" min="0.01" max="0.1" step="0.001">
 
-
-
                         </div>
 
-
-
                     </div>
-
-
 
                     <div class="tool-group">
 
                         <h4>Segment sélectionné</h4>
 
-
-
                         <div id="segmentProps">
-
-
 
                             <p class="hint" style="font-size:0.85rem">Sélectionnez un segment</p>
 
-
-
                         </div>
 
-
-
                     </div>
-
-
 
                     <div class="tool-group">
 
                         <h4>Total calculé</h4>
 
-
-
                         <div class="total-flow-display">
-
-
 
                             <p><strong>Débit total bouches:</strong> <span id="totalExitsFlow">0</span> m³/h</p>
 
-
-
                         </div>
-
-
 
                     </div>
 
-
-
                 </div>
 
-
-
                 <div>
-
-
 
                     <div class="card">
 
                         <h2>Zone de dessin <span style="font-size:0.8rem;color:var(--text-light)">(X/Y uniquement)</span></h2>
 
-
-
                         <p class="hint">Dessinez avec des segments horizontaux et verticaux. Entrée=Caisson, Sortie=Bouche</p>
-
-
 
                         <div class="drawing-area" id="drawingArea">
 
-
-
                             <svg id="drawingCanvas" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;min-height:600px"></svg>
-
-
 
                         </div>
 
-
-
                     </div>
-
-
 
                     <div class="card" id="exitsPanel" style="display:none">
 
                         <h2>Bouches de sortie</h2>
 
-
-
                         <p class="hint">Modifiez le débit de chaque bouche (B1, B2...)</p>
-
-
 
                         <div id="exitsTableContainer"></div>
 
                     </div>
 
-
-
                     <div class="card" id="editorResults" style="display:none">
 
                         <h2>Résultats du calcul</h2>
-
-
 
                         <div id="editorResultsContainer"></div>
 
                     </div>
 
-
-
                 </div>
-
-
 
             </div>
 
-
-
         </div>
 
-
-
     </div>
-
-
 
     <div id="drawingModal" class="modal">
 
@@ -663,17 +354,11 @@
 
             <div class="modal-header">
 
-
-
                 <h2>Représentation du réseau</h2>
-
-
 
                 <span class="close" onclick="document.getElementById('drawingModal').style.display='none'">&times;</span>
 
             </div>
-
-
 
             <div class="svg-container" id="svgContainer"></div>
 
@@ -681,35 +366,23 @@
 
     </div>
 
-
-
-
     <div id="accessoriesModal" class="modal">
 
         <div class="modal-content" style="max-width: 600px;">
 
             <div class="modal-header">
 
-
-
                 <h2>Accessoires du segment</h2>
-
-
 
                 <span class="close" onclick="document.getElementById('accessoriesModal').style.display='none'">&times;</span>
 
             </div>
-
-
 
             <div id="accessoriesContent"></div>
 
         </div>
 
     </div>
-
-
-
 
     <script>
 
@@ -731,9 +404,6 @@
 
             document.head.appendChild(jspdfScript);
 
-
-
-
             const html2canvasScript = document.createElement('script');
 
             html2canvasScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
@@ -748,9 +418,6 @@
 
             document.head.appendChild(html2canvasScript);
 
-
-
-
             // Attendre que les deux soient chargés
 
             const checkLoaded = setInterval(() => {
@@ -763,21 +430,14 @@
 
                 }
 
-
-
             }, 100);
 
         }
-
-
-
 
     </script>
 
     <script src="app.js"></script>
 
 </body>
-
-
 
 </html>
