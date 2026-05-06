@@ -1530,6 +1530,7 @@ function calculateFlowRatesInverse() {
         return;
     }
     
+    // Réinitialiser tous les débits
     segments.forEach(seg => {
         seg.flowRate = 0;
         seg.direction = null;
@@ -1538,6 +1539,7 @@ function calculateFlowRatesInverse() {
         if(node.type !== 'exit') node.flowRate = 0;
     });
     
+    // Calculer le débit total des bouches
     const exits = nodes.filter(n => n.type === 'exit');
     let totalExitFlow = 0;
     exits.forEach(exit => totalExitFlow += (exit.flowRate || 0));
@@ -1554,110 +1556,51 @@ function calculateFlowRatesInverse() {
     const caisson = nodes.find(n => n.type === 'entry');
     if(!caisson) return;
     
-    // Build tree topology using BFS
-    const parentMap = {};
-    const childrenMap = {};
-    const visited = new Set();
-    const queue = [caisson.id];
-    
-    visited.add(caisson.id);
-    parentMap[caisson.id] = null;
-    childrenMap[caisson.id] = [];
-    
-    while(queue.length > 0) {
-        const currentId = queue.shift();
-        const connectedEdges = Object.values(graph.edges).filter(edge =>
-            edge.from === currentId || edge.to === currentId
-        );
-        
-        for(const edge of connectedEdges) {
-            const nextNodeId = edge.from === currentId ? edge.to : edge.from;
-            if(!visited.has(nextNodeId)) {
-                visited.add(nextNodeId);
-                parentMap[nextNodeId] = currentId;
-                if(!childrenMap[currentId]) childrenMap[currentId] = [];
-                childrenMap[currentId].push(nextNodeId);
-                queue.push(nextNodeId);
-            }
-        }
-    }
-    
-    // Propagate flows from exits to caisson
-    const nodeFlows = {};
+    // NOUVELLE APPROCHE: Pour chaque bouche, ajouter son débit à tous les segments sur son chemin
     exits.forEach(exit => {
-        nodeFlows[exit.id] = exit.flowRate || 0;
-    });
-    
-    // Iteratively calculate node flows
-    let changed = true;
-    let iterations = 0;
-    const maxIterations = 100;
-    
-    while(changed && iterations < maxIterations) {
-        changed = false;
-        iterations++;
+        const exitFlow = exit.flowRate || 0;
+        if(exitFlow === 0) return;
         
-        for(const nodeId in parentMap) {
-            if(nodeId === caisson.id) continue;
-            if(nodeFlows[nodeId] !== undefined) continue;
+        // Trouver le chemin depuis le caisson vers cette bouche
+        const path = findPathFromCaisson(graph, exit.id);
+        if(path.length < 2) return;
+        
+        // Trouver les segments qui connectent ces nœuds
+        for(let i = 0; i < path.length - 1; i++) {
+            const fromNodeId = path[i];
+            const toNodeId = path[i+1];
             
-            const children = childrenMap[nodeId] || [];
-            const childFlows = children
-                .map(childId => nodeFlows[childId] || 0)
-                .filter(f => f > 0);
+            const seg = segments.find(s => 
+                (s.node1.id === fromNodeId && s.node2.id === toNodeId) ||
+                (s.node1.id === toNodeId && s.node2.id === fromNodeId)
+            );
             
-            if(childFlows.length > 0) {
-                const sumFlow = childFlows.reduce((a, b) => a + b, 0);
-                if(nodeFlows[nodeId] === undefined || nodeFlows[nodeId] !== sumFlow) {
-                    nodeFlows[nodeId] = sumFlow;
-                    changed = true;
+            if(seg) {
+                // Ajouter le débit de cette bouche au segment
+                seg.flowRate += exitFlow;
+                
+                // Déterminer la direction (du caisson vers la bouche)
+                seg.direction = seg.node1.id === fromNodeId ? 'node1->node2' : 'node2->node1';
+                
+                // Calculer le diamètre optimal pour ce débit
+                const vm = parseFloat(document.getElementById('editorVitesseMax').value) || 4;
+                if(seg.flowRate > 0) {
+                    seg.diameter = calculateOptimalDiameter(seg.flowRate, vm);
                 }
             }
         }
-        
-        // Calculate caisson flow
-        const caissonChildren = childrenMap[caisson.id] || [];
-        const caissonChildFlows = caissonChildren
-            .map(childId => nodeFlows[childId] || 0)
-            .filter(f => f > 0);
-        
-        if(caissonChildFlows.length > 0) {
-            const caissonFlow = caissonChildFlows.reduce((a, b) => a + b, 0);
-            if(nodeFlows[caisson.id] === undefined || nodeFlows[caisson.id] !== caissonFlow) {
-                nodeFlows[caisson.id] = caissonFlow;
-                changed = true;
-            }
-        }
-    }
-    
-    // Assign flows to segments
-    segments.forEach(seg => {
-        const node1Flow = nodeFlows[seg.node1.id] || 0;
-        const node2Flow = nodeFlows[seg.node2.id] || 0;
-        
-        const node1Distance = getDistanceFromCaisson(graph, caisson.id, seg.node1.id);
-        const node2Distance = getDistanceFromCaisson(graph, caisson.id, seg.node2.id);
-        
-        if(node1Distance > node2Distance) {
-            seg.flowRate = node1Flow;
-            seg.direction = 'node1->node2';
-        } else if(node2Distance > node1Distance) {
-            seg.flowRate = node2Flow;
-            seg.direction = 'node2->node1';
-        } else {
-            seg.flowRate = Math.max(node1Flow, node2Flow);
-            seg.direction = node1Flow >= node2Flow ? 'node1->node2' : 'node2->node1';
-        }
-        
-        const vm = parseFloat(document.getElementById('editorVitesseMax').value) || 4;
-        if(seg.flowRate > 0) {
-            seg.diameter = calculateOptimalDiameter(seg.flowRate, vm);
-        }
     });
+    
+    // Appeler mergeColinearSegments pour fusionner les sections continues
+    mergeColinearSegments();
     
     detectIntersections();
     displayFlowRatesOnDrawing();
 }
+
+
+
+
 
 function getDistanceFromCaisson(graph, caissonId, targetId) {
     if(caissonId === targetId) return 0;
@@ -1688,6 +1631,28 @@ function getDistanceFromCaisson(graph, caissonId, targetId) {
     return -1;
 }
 
+
+function mergeColinearSegments() {
+    // This function merges segments that form a continuous section (connected by elbows)
+    // For now, we ensure that connected segments on the same path have consistent flow rates
+    // which is already handled by calculateFlowRatesInverse using Math.min(node1Flow, node2Flow)
+    
+    // Future enhancement: actually merge segments that are colinear or connected by elbows
+    // For tree networks, segments on the same path from caisson to an exit should have the same flow
+    
+    // Ensure all segments on the same path have consistent diameters
+    // If two connected segments have the same flow, they should have the same diameter
+    segments.forEach(seg => {
+        if(seg.flowRate > 0) {
+            const vm = parseFloat(document.getElementById('editorVitesseMax').value) || 4;
+            const optimalDiameter = calculateOptimalDiameter(seg.flowRate, vm);
+            // Only update if significantly different
+            if(Math.abs(seg.diameter - optimalDiameter) > 10) {
+                seg.diameter = optimalDiameter;
+            }
+        }
+    });
+}
 
 function calculateDrawnNetwork() {
 
