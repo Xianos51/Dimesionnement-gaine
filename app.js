@@ -1,11 +1,9 @@
-// ============================================
-
+// ==
 // CALCULATEUR & EDITEUR DE RESEAU DE VENTILATION
 
 // Version automatisee avec calcul segment par segment
 
-// ============================================
-
+// ==
 // === BASE DE DONNEES ZETA === 
 
 const ZETA_DB = {
@@ -90,12 +88,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
 });
 
-// ============================================
-
+// ==
 // FONCTIONS CALCULATEUR
 
-// ============================================
-
+// ==
 function afficherDiametres() {
 
     const c = document.getElementById('diametresContainer');
@@ -477,12 +473,10 @@ function setCaissonMode(mode) {
     }
 }
 
-// ============================================
-
+// ==
 // FONCTIONS EDITEUR
 
-// ============================================
-
+// ==
 function initEditor() {
 
     if(!canvasElement) return;
@@ -1530,6 +1524,7 @@ function calculateFlowRatesInverse() {
         return;
     }
     
+    // Réinitialiser tous les débits
     segments.forEach(seg => {
         seg.flowRate = 0;
         seg.direction = null;
@@ -1538,6 +1533,7 @@ function calculateFlowRatesInverse() {
         if(node.type !== 'exit') node.flowRate = 0;
     });
     
+    // Calculer le débit total des bouches
     const exits = nodes.filter(n => n.type === 'exit');
     let totalExitFlow = 0;
     exits.forEach(exit => totalExitFlow += (exit.flowRate || 0));
@@ -1554,37 +1550,10 @@ function calculateFlowRatesInverse() {
     const caisson = nodes.find(n => n.type === 'entry');
     if(!caisson) return;
     
-    // Build tree topology using BFS
-    const parentMap = {};
-    const childrenMap = {};
-    const visited = new Set();
-    const queue = [caisson.id];
-    
-    visited.add(caisson.id);
-    parentMap[caisson.id] = null;
-    childrenMap[caisson.id] = [];
-    
-    while(queue.length > 0) {
-        const currentId = queue.shift();
-        const connectedEdges = Object.values(graph.edges).filter(edge =>
-            edge.from === currentId || edge.to === currentId
-        );
-        
-        for(const edge of connectedEdges) {
-            const nextNodeId = edge.from === currentId ? edge.to : edge.from;
-            if(!visited.has(nextNodeId)) {
-                visited.add(nextNodeId);
-                parentMap[nextNodeId] = currentId;
-                if(!childrenMap[currentId]) childrenMap[currentId] = [];
-                childrenMap[currentId].push(nextNodeId);
-                queue.push(nextNodeId);
-            }
-        }
-    }
-    
-    // Propagate flows from exits to caisson
-    const nodeFlows = {};
+    // NOUVELLE APPROCHE: Pour chaque bouche, ajouter son débit à tous les segments sur son chemin
     exits.forEach(exit => {
+        const exitFlow = exit.flowRate || 0;
+        if(exitFlow === 0) return;
         nodeFlows[exit.id] = exit.flowRate || 0;
     });
     
@@ -1597,23 +1566,39 @@ function calculateFlowRatesInverse() {
         changed = false;
         iterations++;
         
-        for(const nodeId in parentMap) {
-            if(nodeId === caisson.id) continue;
-            if(nodeFlows[nodeId] !== undefined) continue;
+        // Trouver le chemin depuis le caisson vers cette bouche
+        const path = findPathFromCaisson(graph, exit.id);
+        if(path.length < 2) return;
+        
+        // Trouver les segments qui connectent ces nœuds
+        for(let i = 0; i < path.length - 1; i++) {
+            const fromNodeId = path[i];
+            const toNodeId = path[i+1];
             
-            const children = childrenMap[nodeId] || [];
-            const childFlows = children
-                .map(childId => nodeFlows[childId] || 0)
-                .filter(f => f > 0);
+            const seg = segments.find(s => 
+                (s.node1.id === fromNodeId && s.node2.id === toNodeId) ||
+                (s.node1.id === toNodeId && s.node2.id === fromNodeId)
+            );
             
-            if(childFlows.length > 0) {
-                const sumFlow = childFlows.reduce((a, b) => a + b, 0);
-                if(nodeFlows[nodeId] === undefined || nodeFlows[nodeId] !== sumFlow) {
-                    nodeFlows[nodeId] = sumFlow;
-                    changed = true;
+            if(seg) {
+                // Ajouter le débit de cette bouche au segment
+                seg.flowRate += exitFlow;
+                
+                // Déterminer la direction (du caisson vers la bouche)
+                seg.direction = seg.node1.id === fromNodeId ? 'node1->node2' : 'node2->node1';
+                
+                // Calculer le diamètre optimal pour ce débit
+                const vm = parseFloat(document.getElementById('editorVitesseMax').value) || 4;
+                if(seg.flowRate > 0) {
+                    seg.diameter = calculateOptimalDiameter(seg.flowRate, vm);
                 }
             }
         }
+    });
+    
+    // Appeler mergeColinearSegments pour fusionner les sections continues
+    mergeColinearSegments();
+    mergeSimpleJunctions();
         
         // Calculate caisson flow
         const caissonChildren = childrenMap[caisson.id] || [];
@@ -1670,6 +1655,8 @@ function calculateFlowRatesInverse() {
 
 
 
+
+
 function getDistanceFromCaisson(graph, caissonId, targetId) {
     if(caissonId === targetId) return 0;
     
@@ -1720,6 +1707,125 @@ function mergeColinearSegments() {
             }
         }
     });
+}
+
+function mergeSimpleJunctions() {
+    // This function merges simple junctions (2 segments = elbow) and ensures T-junctions (3+ segments) have proper accessories
+    
+    const junctionNodes = nodes.filter(n => n.type === 'junction');
+    const segmentsToRemove = new Set();
+    const newSegments = [];
+    
+    junctionNodes.forEach(junction => {
+        // Find all segments connected to this junction
+        const connectedSegs = segments.filter(seg => 
+            seg.node1.id === junction.id || seg.node2.id === junction.id
+        );
+        
+        if(connectedSegs.length === 2) {
+            // This is an elbow (2 segments meeting at a junction)
+            // Merge the two segments into one with an elbow accessory
+            
+            const seg1 = connectedSegs[0];
+            const seg2 = connectedSegs[1];
+            
+            // Determine which nodes are the "outer" nodes (not the junction)
+            const outerNode1 = seg1.node1.id === junction.id ? seg1.node2 : seg1.node1;
+            const outerNode2 = seg2.node1.id === junction.id ? seg2.node2 : seg2.node1;
+            
+            // Check if segments are orthogonal (one horizontal, one vertical)
+            const path1 = seg1.path.getAttribute('d');
+            const path2 = seg2.path.getAttribute('d');
+            
+            const m1 = path1 && path1.match(/M[\s]*([\d.]+)[\s]*([\d.]+)[\s]*L[\s]*([\d.]+)[\s]*([\d.]+)/);
+            const m2 = path2 && path2.match(/M[\s]*([\d.]+)[\s]*([\d.]+)[\s]*L[\s]*([\d.]+)[\s]*([\d.]+)/);
+            
+            if(m1 && m2) {
+                const x1 = parseFloat(m1[1]), y1 = parseFloat(m1[2]);
+                const x2 = parseFloat(m1[3]), y2 = parseFloat(m1[4]);
+                const x3 = parseFloat(m2[1]), y3 = parseFloat(m2[2]);
+                const x4 = parseFloat(m2[3]), y4 = parseFloat(m2[4]);
+                
+                const seg1IsHorizontal = Math.abs(y2 - y1) < 2;
+                const seg1IsVertical = Math.abs(x2 - x1) < 2;
+                const seg2IsHorizontal = Math.abs(y4 - y3) < 2;
+                const seg2IsVertical = Math.abs(x4 - x3) < 2;
+                
+                // Only merge if segments are orthogonal (elbow)
+                if((seg1IsHorizontal && seg2IsVertical) || (seg1IsVertical && seg2IsHorizontal)) {
+                    // Find the outer nodes
+                    const nodeA = nodes.find(n => n.id === outerNode1.id);
+                    const nodeB = nodes.find(n => n.id === outerNode2.id);
+                    
+                    if(nodeA && nodeB) {
+                        // Create merged segment
+                        const mergedSeg = {
+                            id: 'S' + (++segmentCounter),
+                            name: 'S' + segmentCounter,
+                            path: createPathElement(nodeA.x, nodeA.y, nodeB.x, nodeB.y),
+                            node1: nodeA,
+                            node2: nodeB,
+                            length: seg1.length + seg2.length,
+                            accessories: [
+                                ...seg1.accessories,
+                                ...seg2.accessories,
+                                {type: 'coude_90', zeta: 0.25, name: 'Coude 90°'}
+                            ],
+                            diameter: Math.max(seg1.diameter || 200, seg2.diameter || 200),
+                            flowRate: Math.max(seg1.flowRate || 0, seg2.flowRate || 0),
+                            direction: null
+                        };
+                        
+                        // Add event listener
+                        mergedSeg.path.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            selectSegment(mergedSeg);
+                        });
+                        
+                        // Add to canvas
+                        canvasElement.appendChild(mergedSeg.path);
+                        
+                        newSegments.push(mergedSeg);
+                        segmentsToRemove.add(seg1);
+                        segmentsToRemove.add(seg2);
+                        
+                        // Remove junction node
+                        const junctionIndex = nodes.indexOf(junction);
+                        if(junctionIndex > -1) {
+                            nodes.splice(junctionIndex, 1);
+                        }
+                        if(junction.element && junction.element.parentNode) {
+                            junction.element.parentNode.removeChild(junction.element);
+                        }
+                    }
+                }
+            }
+        } else if(connectedSegs.length >= 3) {
+            // This is a T-junction (3+ segments)
+            // Ensure all segments have T accessories
+            connectedSegs.forEach(seg => {
+                // Check if this segment is the "main" path (passing through) or a "branch"
+                const isMainPath = isSegmentPassingThrough(seg, junction);
+                
+                // Remove any existing T accessories to avoid duplicates
+                seg.accessories = seg.accessories.filter(a => 
+                    a.type !== 'te_droit' && a.type !== 'te_branche'
+                );
+                
+                // Add appropriate T accessory
+                if(isMainPath) {
+                    seg.accessories.push({type: 'te_droit', zeta: 0.1, name: 'Té passage direct'});
+                } else {
+                    seg.accessories.push({type: 'te_branche', zeta: 0.5, name: 'Té sortie branche'});
+                }
+            });
+        }
+    });
+    
+    // Remove merged segments
+    segments = segments.filter(seg => !segmentsToRemove.has(seg));
+    segments.push(...newSegments);
+    drawnPaths = segments.map(s => s.path);
 }
 
 function calculateDrawnNetwork() {
