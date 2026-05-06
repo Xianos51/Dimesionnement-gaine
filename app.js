@@ -1763,7 +1763,6 @@ function mergeSimpleJunctions() {
                     seg.accessories.push({type: 'te_branche', zeta: 0.5, name: 'Té sortie branche'});
                 }
             });
-        }
     });
     
     // Remove merged segments
@@ -2207,5 +2206,4 @@ function exportToPDF() {
 
     });
 
-}
 
