@@ -1314,500 +1314,380 @@ function findPathFromCaisson(graph, targetNodeId) {
 
 }
 
+// Helper function to check if a segment is passing through a node (not just an endpoint)
+function isSegmentPassingThrough(seg, node) {
+    if(!seg || !seg.path || !node) return false;
+    const path = seg.path.getAttribute('d');
+    if(!path) return false;
+    const match = path.match(/M[\s]*([\d.]+)[\s]*([\d.]+)[\s]*L[\s]*([\d.]+)[\s]*([\d.]+)/);
+    if(!match) return false;
+    const x1 = parseFloat(match[1]), y1 = parseFloat(match[2]);
+    const x2 = parseFloat(match[3]), y2 = parseFloat(match[4]);
+    if((Math.abs(x1 - node.x) < 2 && Math.abs(y1 - node.y) < 2) ||
+       (Math.abs(x2 - node.x) < 2 && Math.abs(y2 - node.y) < 2)) {
+        return false;
+    }
+    if(Math.abs(y2 - y1) < 2) {
+        return Math.abs(y1 - node.y) < 2 && node.x >= Math.min(x1, x2) - 2 && node.x <= Math.max(x1, x2) + 2;
+    }
+    if(Math.abs(x2 - x1) < 2) {
+        return Math.abs(x1 - node.x) < 2 && node.y >= Math.min(y1, y2) - 2 && node.y <= Math.max(y1, y2) + 2;
+    }
+    return false;
+}
+
 // Détecte les intersections entre segments et ajoute des Tés automatiquement
-
 function detectIntersections() {
-
     const newSegments = [];
-
     const processedSegments = new Set();
-
+    const TOLERANCE = 2;
     
-
+    if(segments.length < 2) return;
+    
     for(let i = 0; i < segments.length; i++) {
-
         if(processedSegments.has(i)) continue;
-
         const seg1 = segments[i];
-
+        if(!seg1 || !seg1.path || !seg1.node1 || !seg1.node2) continue;
+        const path1 = seg1.path.getAttribute('d');
+        if(!path1) continue;
+        const m1 = path1.match(/M[\s]*([\d.]+)[\s]*([\d.]+)[\s]*L[\s]*([\d.]+)[\s]*([\d.]+)/);
+        if(!m1) continue;
+        const x1 = parseFloat(m1[1]), y1 = parseFloat(m1[2]);
+        const x2 = parseFloat(m1[3]), y2 = parseFloat(m1[4]);
+        if(Math.abs(x2 - x1) < TOLERANCE && Math.abs(y2 - y1) < TOLERANCE) continue;
+        const seg1IsHorizontal = Math.abs(y2 - y1) <= TOLERANCE;
+        const seg1IsVertical = Math.abs(x2 - x1) <= TOLERANCE;
+        if(!seg1IsHorizontal && !seg1IsVertical) continue;
         
-
         for(let j = i + 1; j < segments.length; j++) {
-
             if(processedSegments.has(j)) continue;
-
             const seg2 = segments[j];
-
-            
-
-            // Ignorer si les segments partagent déjà un nœud
-
+            if(!seg2 || !seg2.path || !seg2.node1 || !seg2.node2) continue;
             if(seg1.node1 === seg2.node1 || seg1.node1 === seg2.node2 || 
-
                seg1.node2 === seg2.node1 || seg1.node2 === seg2.node2) {
-
                 continue;
-
             }
-
-            
-
-            if (!seg1.path || !seg2.path) continue;
-            const path1 = seg1.path.getAttribute('d');
-            if (!path1) continue;
-
             const path2 = seg2.path.getAttribute('d');
-            if (!path2) continue;
-
-            
-
-            const m1 = path1.match(/M[\s]*([\d.]+)[\s]*([\d.]+)[\s]*L[\s]*([\d.]+)[\s]*([\d.]+)/);
-
+            if(!path2) continue;
             const m2 = path2.match(/M[\s]*([\d.]+)[\s]*([\d.]+)[\s]*L[\s]*([\d.]+)[\s]*([\d.]+)/);
-
-            
-
-            if(!m1 || !m2) continue;
-
-            
-
-            const x1 = parseFloat(m1[1]), y1 = parseFloat(m1[2]);
-
-            const x2 = parseFloat(m1[3]), y2 = parseFloat(m1[4]);
-
+            if(!m2) continue;
             const x3 = parseFloat(m2[1]), y3 = parseFloat(m2[2]);
-
             const x4 = parseFloat(m2[3]), y4 = parseFloat(m2[4]);
-
+            if(Math.abs(x4 - x3) < TOLERANCE && Math.abs(y4 - y3) < TOLERANCE) continue;
+            const seg2IsHorizontal = Math.abs(y4 - y3) <= TOLERANCE;
+            const seg2IsVertical = Math.abs(x4 - x3) <= TOLERANCE;
+            if(!seg2IsHorizontal && !seg2IsVertical) continue;
+            if((seg1IsHorizontal && seg2IsHorizontal) || (seg1IsVertical && seg2IsVertical)) continue;
             
-
-            const seg1Horizontal = (y1 === y2);
-
-            const seg2Horizontal = (y3 === y4);
-
+            let hx1, hx2, hy, vx, vy1, vy2;
+            if(seg1IsHorizontal) {
+                hx1 = x1; hx2 = x2; hy = y1;
+                vx = x3; vy1 = y3; vy2 = y4;
+            } else {
+                hx1 = x3; hx2 = x4; hy = y3;
+                vx = x1; vy1 = y1; vy2 = y2;
+            }
+            const hxMin = Math.min(hx1, hx2);
+            const hxMax = Math.max(hx1, hx2);
+            const vyMin = Math.min(vy1, vy2);
+            const vyMax = Math.max(vy1, vy2);
+            if(!(vx >= hxMin - TOLERANCE && vx <= hxMax + TOLERANCE &&
+                  hy >= vyMin - TOLERANCE && hy <= vyMax + TOLERANCE)) continue;
             
-
-            if(seg1Horizontal === seg2Horizontal) continue;
-
+            const ix = Math.round(vx);
+            const iy = Math.round(hy);
             
-
-            const horizontalSeg = seg1Horizontal ? seg1 : seg2;
-
-            const verticalSeg = seg1Horizontal ? seg2 : seg1;
-
-            
-
-            const hx1 = seg1Horizontal ? x1 : x3;
-
-            const hx2 = seg1Horizontal ? x2 : x4;
-
-            const hy = seg1Horizontal ? y1 : y3;
-
-            const vx = seg1Horizontal ? x3 : x1;
-
-            const vy1 = seg1Horizontal ? y3 : y1;
-
-            const vy2 = seg1Horizontal ? y4 : y2;
-
-            
-
-            if(vx >= Math.min(hx1, hx2) && vx <= Math.max(hx1, hx2) &&
-
-               hy >= Math.min(vy1, vy2) && hy <= Math.max(vy1, vy2)) {
-
-                
-
-                const ix = vx;
-
-                const iy = hy;
-
-                
-
-                const existingNode = nodes.find(n => n.x === ix && n.y === iy);
-
-                if(existingNode && existingNode.type === 'junction') {
-
-                    if(!seg1.accessories.some(a => a.type === 'te_branche')) {
-
+            const existingNode = nodes.find(n => Math.abs(n.x - ix) <= TOLERANCE && Math.abs(n.y - iy) <= TOLERANCE);
+            if(existingNode) {
+                if(existingNode.type === 'junction') {
+                    if(!seg1.accessories.some(a => a.type === 'te_branche' || a.type === 'te_droit')) {
                         seg1.accessories.push({type: 'te_branche', zeta: 0.5, name: 'Té'});
-
                     }
-
-                    if(!seg2.accessories.some(a => a.type === 'te_branche')) {
-
+                    if(!seg2.accessories.some(a => a.type === 'te_branche' || a.type === 'te_droit')) {
                         seg2.accessories.push({type: 'te_branche', zeta: 0.5, name: 'Té'});
-
                     }
-
-                    continue;
-
                 }
-
-                
-
-                const junctionNode = {id: 'node_'+Date.now(), x: ix, y: iy, type: 'junction', element: null};
-
-                nodes.push(junctionNode);
-
-                
-
-                const seg1Part1 = {
-
-                    id: 'S' + (++segmentCounter),
-
-                    name: 'S' + segmentCounter,
-
-                    path: createPathElement(
-
-                        seg1Horizontal ? hx1 : vx, seg1Horizontal ? hy : (vy1 < vy2 ? vy1 : vy2),
-
-                        ix, iy
-
-                    ),
-
-                    node1: seg1.node1,
-
-                    node2: junctionNode,
-
-                    length: (seg1Horizontal ? Math.abs(ix - hx1) : Math.abs(iy - (vy1 < vy2 ? vy1 : vy2))) / SCALE,
-
-                    accessories: [...seg1.accessories],
-
-                    diameter: seg1.diameter,
-
-                    flowRate: seg1.flowRate,
-
-                    direction: null
-
-                };
-
-                
-
-                const seg1Part2 = {
-
-                    id: 'S' + (++segmentCounter),
-
-                    name: 'S' + segmentCounter,
-
-                    path: createPathElement(ix, iy, seg1Horizontal ? hx2 : vx, seg1Horizontal ? hy : (vy1 > vy2 ? vy1 : vy2)),
-
-                    node1: junctionNode,
-
-                    node2: seg1.node2,
-
-                    length: (seg1Horizontal ? Math.abs(hx2 - ix) : Math.abs((vy1 > vy2 ? vy1 : vy2) - iy)) / SCALE,
-
-                    accessories: [],
-
-                    diameter: seg1.diameter,
-
-                    flowRate: seg1.flowRate,
-
-                    direction: null
-
-                };
-
-                
-
-                const seg2Part1 = {
-
-                    id: 'S' + (++segmentCounter),
-
-                    name: 'S' + segmentCounter,
-
-                    path: createPathElement(
-
-                        seg2Horizontal ? x3 : ix, seg2Horizontal ? y3 : (vy1 < vy2 ? vy1 : vy2),
-
-                        ix, iy
-
-                    ),
-
-                    node1: seg2.node1,
-
-                    node2: junctionNode,
-
-                    length: (seg2Horizontal ? Math.abs(ix - x3) : Math.abs(iy - (vy1 < vy2 ? vy1 : vy2))) / SCALE,
-
-                    accessories: [...seg2.accessories],
-
-                    diameter: seg2.diameter,
-
-                    flowRate: seg2.flowRate,
-
-                    direction: null
-
-                };
-
-                
-
-                const seg2Part2 = {
-
-                    id: 'S' + (++segmentCounter),
-
-                    name: 'S' + segmentCounter,
-
-                    path: createPathElement(ix, iy, seg2Horizontal ? x4 : ix, seg2Horizontal ? y4 : (vy1 > vy2 ? vy1 : vy2)),
-
-                    node1: junctionNode,
-
-                    node2: seg2.node2,
-
-                    length: (seg2Horizontal ? Math.abs(x4 - ix) : Math.abs((vy1 > vy2 ? vy1 : vy2) - iy)) / SCALE,
-
-                    accessories: [],
-
-                    diameter: seg2.diameter,
-
-                    flowRate: seg2.flowRate,
-
-                    direction: null
-
-                };
-
-                
-
+                continue;
+            }
+            
+            const junctionNode = {id: 'node_'+Date.now(), x: ix, y: iy, type: 'junction', element: null};
+            nodes.push(junctionNode);
+            
+            const seg1IsHoriz = seg1IsHorizontal;
+            const seg2IsHoriz = seg2IsHorizontal;
+            
+            const seg1P1_x1 = seg1IsHoriz ? (x1 < x2 ? x1 : x2) : x1;
+            const seg1P1_y1 = seg1IsHoriz ? y1 : (y1 < y2 ? y1 : y2);
+            const seg1P1_x2 = ix;
+            const seg1P1_y2 = iy;
+            
+            const seg1Part1 = {
+                id: 'S' + (++segmentCounter),
+                name: 'S' + segmentCounter,
+                path: createPathElement(seg1P1_x1, seg1P1_y1, seg1P1_x2, seg1P1_y2),
+                node1: seg1IsHoriz ? (x1 < x2 ? seg1.node1 : seg1.node2) : (y1 < y2 ? seg1.node1 : seg1.node2),
+                node2: junctionNode,
+                length: Math.sqrt(Math.pow(seg1P1_x2 - seg1P1_x1, 2) + Math.pow(seg1P1_y2 - seg1P1_y1, 2)) / SCALE,
+                accessories: [...seg1.accessories],
+                diameter: seg1.diameter,
+                flowRate: seg1.flowRate,
+                direction: null
+            };
+            
+            const seg1P2_x1 = ix;
+            const seg1P2_y1 = iy;
+            const seg1P2_x2 = seg1IsHoriz ? (x1 > x2 ? x1 : x2) : x2;
+            const seg1P2_y2 = seg1IsHoriz ? y2 : (y1 > y2 ? y1 : y2);
+            
+            const seg1Part2 = {
+                id: 'S' + (++segmentCounter),
+                name: 'S' + segmentCounter,
+                path: createPathElement(seg1P2_x1, seg1P2_y1, seg1P2_x2, seg1P2_y2),
+                node1: junctionNode,
+                node2: seg1IsHoriz ? (x1 > x2 ? seg1.node1 : seg1.node2) : (y1 > y2 ? seg1.node1 : seg1.node2),
+                length: Math.sqrt(Math.pow(seg1P2_x2 - seg1P2_x1, 2) + Math.pow(seg1P2_y2 - seg1P2_y1, 2)) / SCALE,
+                accessories: [],
+                diameter: seg1.diameter,
+                flowRate: seg1.flowRate,
+                direction: null
+            };
+            
+            const seg2P1_x1 = seg2IsHoriz ? (x3 < x4 ? x3 : x4) : x3;
+            const seg2P1_y1 = seg2IsHoriz ? y3 : (y3 < y4 ? y3 : y4);
+            const seg2P1_x2 = ix;
+            const seg2P1_y2 = iy;
+            
+            const seg2Part1 = {
+                id: 'S' + (++segmentCounter),
+                name: 'S' + segmentCounter,
+                path: createPathElement(seg2P1_x1, seg2P1_y1, seg2P1_x2, seg2P1_y2),
+                node1: seg2IsHoriz ? (x3 < x4 ? seg2.node1 : seg2.node2) : (y3 < y4 ? seg2.node1 : seg2.node2),
+                node2: junctionNode,
+                length: Math.sqrt(Math.pow(seg2P1_x2 - seg2P1_x1, 2) + Math.pow(seg2P1_y2 - seg2P1_y1, 2)) / SCALE,
+                accessories: [...seg2.accessories],
+                diameter: seg2.diameter,
+                flowRate: seg2.flowRate,
+                direction: null
+            };
+            
+            const seg2P2_x1 = ix;
+            const seg2P2_y1 = iy;
+            const seg2P2_x2 = seg2IsHoriz ? (x3 > x4 ? x3 : x4) : x4;
+            const seg2P2_y2 = seg2IsHoriz ? y4 : (y3 > y4 ? y3 : y4);
+            
+            const seg2Part2 = {
+                id: 'S' + (++segmentCounter),
+                name: 'S' + segmentCounter,
+                path: createPathElement(seg2P2_x1, seg2P2_y1, seg2P2_x2, seg2P2_y2),
+                node1: junctionNode,
+                node2: seg2IsHoriz ? (x3 > x4 ? seg2.node1 : seg2.node2) : (y3 > y4 ? seg2.node1 : seg2.node2),
+                length: Math.sqrt(Math.pow(seg2P2_x2 - seg2P2_x1, 2) + Math.pow(seg2P2_y2 - seg2P2_y1, 2)) / SCALE,
+                accessories: [],
+                diameter: seg2.diameter,
+                flowRate: seg2.flowRate,
+                direction: null
+            };
+            
+            if(!seg1.accessories.some(a => a.type === 'te_branche' || a.type === 'te_droit')) {
                 seg1.accessories.push({type: 'te_branche', zeta: 0.5, name: 'Té'});
-
+            }
+            if(!seg2.accessories.some(a => a.type === 'te_branche' || a.type === 'te_droit')) {
                 seg2.accessories.push({type: 'te_branche', zeta: 0.5, name: 'Té'});
-
-                
-
-                const seg1Index = segments.indexOf(seg1);
-
-                const seg2Index = segments.indexOf(seg2);
-
-                newSegments.push(seg1Part1, seg1Part2, seg2Part1, seg2Part2);
-
-                processedSegments.add(i);
-
-                processedSegments.add(j);
-
-                
-
-                if(seg1.path && seg1.path.parentNode) seg1.path.parentNode.removeChild(seg1.path);
-
-                if(seg2.path && seg2.path.parentNode) seg2.path.parentNode.removeChild(seg2.path);
-
-                
-
-                canvasElement.appendChild(seg1Part1.path);
-
-                canvasElement.appendChild(seg1Part2.path);
-
-                canvasElement.appendChild(seg2Part1.path);
-
-                canvasElement.appendChild(seg2Part2.path);
-
-                
-
-                [seg1Part1, seg1Part2, seg2Part1, seg2Part2].forEach(s => {
-
-                    s.path.addEventListener('click', (e) => {
-
-                        e.stopPropagation();
-
-                        selectSegment(s);
-
-                    });
-
+            }
+            
+            newSegments.push(seg1Part1, seg1Part2, seg2Part1, seg2Part2);
+            processedSegments.add(i);
+            processedSegments.add(j);
+            
+            if(seg1.path && seg1.path.parentNode) seg1.path.parentNode.removeChild(seg1.path);
+            if(seg2.path && seg2.path.parentNode) seg2.path.parentNode.removeChild(seg2.path);
+            
+            canvasElement.appendChild(seg1Part1.path);
+            canvasElement.appendChild(seg1Part2.path);
+            canvasElement.appendChild(seg2Part1.path);
+            canvasElement.appendChild(seg2Part2.path);
+            
+            [seg1Part1, seg1Part2, seg2Part1, seg2Part2].forEach(s => {
+                s.path.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    selectSegment(s);
                 });
-
-            }
-
+            });
         }
-
     }
-
     
-
     segments = segments.filter((_, i) => !processedSegments.has(i)).concat(newSegments);
-
     drawnPaths = segments.map(s => s.path);
-
 }
 
-// Calcule les débits segment par segment avec propagation depuis le Caisson
 
+
+
+// Calcule les débits segment par segment avec propagation correcte depuis les bouches vers le Caisson (réseau arborescent)
 function calculateFlowRatesInverse() {
-
     if(!caissonNode) {
-
         alert('Veuillez d abord definir un point Caisson (entree)');
-
         return;
-
     }
-
     
-
-    // Réinitialiser
-
     segments.forEach(seg => {
-
         seg.flowRate = 0;
-
         seg.direction = null;
-
     });
-
-    nodes.forEach(node => { 
-
-        if(node.type !== 'exit') node.flowRate = 0; 
-
+    nodes.forEach(node => {
+        if(node.type !== 'exit') node.flowRate = 0;
     });
-
     
-
-    // Calculer le débit total des bouches
-
     const exits = nodes.filter(n => n.type === 'exit');
-
     let totalExitFlow = 0;
-
     exits.forEach(exit => totalExitFlow += (exit.flowRate || 0));
-
     
-
     document.getElementById('totalExitsFlow').textContent = Math.round(totalExitFlow);
-
     document.getElementById('totalFlowRate').value = Math.round(totalExitFlow);
-
     
-
     if(totalExitFlow === 0) {
-
         displayFlowRatesOnDrawing();
-
         return;
-
     }
-
     
-
-    // Construire le graphe
-
     const graph = buildNetworkGraph();
-
+    const caisson = nodes.find(n => n.type === 'entry');
+    if(!caisson) return;
     
-
-    // Calculer les chemins depuis le Caisson vers chaque bouche
-
-    const exitNodes = nodes.filter(n => n.type === 'exit');
-
+    // Build tree topology using BFS
+    const parentMap = {};
+    const childrenMap = {};
+    const visited = new Set();
+    const queue = [caisson.id];
     
-
-    // Pour chaque bouche, trouver le chemin depuis le Caisson
-
-    exitNodes.forEach(exit => {
-
-        const path = findPathFromCaisson(graph, exit.id);
-
-        if(path.length < 2) return;
-
+    visited.add(caisson.id);
+    parentMap[caisson.id] = null;
+    childrenMap[caisson.id] = [];
+    
+    while(queue.length > 0) {
+        const currentId = queue.shift();
+        const connectedEdges = Object.values(graph.edges).filter(edge =>
+            edge.from === currentId || edge.to === currentId
+        );
         
-
-        // Trouver les segments qui connectent ces nœuds
-
-        for(let i = 0; i < path.length - 1; i++) {
-
-            const fromNodeId = path[i];
-
-            const toNodeId = path[i+1];
-
-            
-
-            const seg = segments.find(s => 
-
-                (s.node1.id === fromNodeId && s.node2.id === toNodeId) ||
-
-                (s.node1.id === toNodeId && s.node2.id === fromNodeId)
-
-            );
-
-            
-
-            if(seg) {
-
-                // Déterminer le sens : du Caisson vers la bouche
-
-                seg.direction = seg.node1.id === fromNodeId ? 'node1->node2' : 'node2->node1';
-
-                
-
-                // Pour simplifier : le débit de la bouche est propagé
-
-                // (À améliorer : somme des débits des bouches en aval)
-
-                seg.flowRate = exit.flowRate || 0;
-
-                
-
-                // Calculer le diamètre optimal
-
-                const vm = parseFloat(document.getElementById('editorVitesseMax').value) || 4;
-
-                seg.diameter = calculateOptimalDiameter(seg.flowRate, vm);
-
+        for(const edge of connectedEdges) {
+            const nextNodeId = edge.from === currentId ? edge.to : edge.from;
+            if(!visited.has(nextNodeId)) {
+                visited.add(nextNodeId);
+                parentMap[nextNodeId] = currentId;
+                if(!childrenMap[currentId]) childrenMap[currentId] = [];
+                childrenMap[currentId].push(nextNodeId);
+                queue.push(nextNodeId);
             }
-
         }
-
-    });
-
+    }
     
-
-    // Pour les segments qui ne sont pas sur un chemin direct (jonctions),
-
-    // calculer comme la somme des débits des segments en aval
-
-    segments.forEach(seg => {
-
-        if(seg.flowRate === 0) {
-
-            // Ce segment n'est pas sur un chemin direct, calculer depuis les segments connectés
-
-            const connectedSegs = segments.filter(s => 
-
-                s !== seg && 
-
-                (s.node1.id === seg.node1.id || s.node1.id === seg.node2.id ||
-
-                 s.node2.id === seg.node1.id || s.node2.id === seg.node2.id)
-
-            );
-
+    // Propagate flows from exits to caisson
+    const nodeFlows = {};
+    exits.forEach(exit => {
+        nodeFlows[exit.id] = exit.flowRate || 0;
+    });
+    
+    // Iteratively calculate node flows
+    let changed = true;
+    let iterations = 0;
+    const maxIterations = 100;
+    
+    while(changed && iterations < maxIterations) {
+        changed = false;
+        iterations++;
+        
+        for(const nodeId in parentMap) {
+            if(nodeId === caisson.id) continue;
+            if(nodeFlows[nodeId] !== undefined) continue;
             
-
-            const childFlows = connectedSegs
-
-                .filter(s => s.flowRate > 0)
-
-                .map(s => s.flowRate);
-
+            const children = childrenMap[nodeId] || [];
+            const childFlows = children
+                .map(childId => nodeFlows[childId] || 0)
+                .filter(f => f > 0);
             
-
             if(childFlows.length > 0) {
-
-                seg.flowRate = childFlows.reduce((a, b) => a + b, 0);
-
-                const vm = parseFloat(document.getElementById('editorVitesseMax').value) || 4;
-
-                seg.diameter = calculateOptimalDiameter(seg.flowRate, vm);
-
+                const sumFlow = childFlows.reduce((a, b) => a + b, 0);
+                if(nodeFlows[nodeId] === undefined || nodeFlows[nodeId] !== sumFlow) {
+                    nodeFlows[nodeId] = sumFlow;
+                    changed = true;
+                }
             }
-
         }
-
-    });
-
+        
+        // Calculate caisson flow
+        const caissonChildren = childrenMap[caisson.id] || [];
+        const caissonChildFlows = caissonChildren
+            .map(childId => nodeFlows[childId] || 0)
+            .filter(f => f > 0);
+        
+        if(caissonChildFlows.length > 0) {
+            const caissonFlow = caissonChildFlows.reduce((a, b) => a + b, 0);
+            if(nodeFlows[caisson.id] === undefined || nodeFlows[caisson.id] !== caissonFlow) {
+                nodeFlows[caisson.id] = caissonFlow;
+                changed = true;
+            }
+        }
+    }
     
-
+    // Assign flows to segments
+    segments.forEach(seg => {
+        const node1Flow = nodeFlows[seg.node1.id] || 0;
+        const node2Flow = nodeFlows[seg.node2.id] || 0;
+        
+        const node1Distance = getDistanceFromCaisson(graph, caisson.id, seg.node1.id);
+        const node2Distance = getDistanceFromCaisson(graph, caisson.id, seg.node2.id);
+        
+        if(node1Distance > node2Distance) {
+            seg.flowRate = node1Flow;
+            seg.direction = 'node1->node2';
+        } else if(node2Distance > node1Distance) {
+            seg.flowRate = node2Flow;
+            seg.direction = 'node2->node1';
+        } else {
+            seg.flowRate = Math.max(node1Flow, node2Flow);
+            seg.direction = node1Flow >= node2Flow ? 'node1->node2' : 'node2->node1';
+        }
+        
+        const vm = parseFloat(document.getElementById('editorVitesseMax').value) || 4;
+        if(seg.flowRate > 0) {
+            seg.diameter = calculateOptimalDiameter(seg.flowRate, vm);
+        }
+    });
+    
     detectIntersections();
-
     displayFlowRatesOnDrawing();
-
 }
+
+function getDistanceFromCaisson(graph, caissonId, targetId) {
+    if(caissonId === targetId) return 0;
+    
+    const visited = new Set();
+    const queue = [{nodeId: caissonId, distance: 0}];
+    visited.add(caissonId);
+    
+    while(queue.length > 0) {
+        const {nodeId, distance} = queue.shift();
+        
+        const connectedEdges = Object.values(graph.edges).filter(edge =>
+            edge.from === nodeId || edge.to === nodeId
+        );
+        
+        for(const edge of connectedEdges) {
+            const nextNodeId = edge.from === nodeId ? edge.to : edge.from;
+            if(nextNodeId === targetId) {
+                return distance + 1;
+            }
+            if(!visited.has(nextNodeId)) {
+                visited.add(nextNodeId);
+                queue.push({nodeId: nextNodeId, distance: distance + 1});
+            }
+        }
+    }
+    
+    return -1;
+}
+
 
 function calculateDrawnNetwork() {
 
